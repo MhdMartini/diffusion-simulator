@@ -1,6 +1,9 @@
+from typing import Tuple
 import numpy as np
 import cv2
 from grid import Grid
+import torch as T
+from itertools import count
 """
 class to define the class for the seach map
 search map object contains a 2d array of cell objects
@@ -16,32 +19,44 @@ C_EMPTY = 0
 
 class Brownian:
     def __init__(self, grid: Grid, n_particles: int = None):
-        self.grid = grid
-        self.empty_rows, self.empty_cols = np.where(
-            self.grid.grid_array == EMPTY)
-        self.n_particles = n_particles if n_particles is not None else grid.shape[
-            0] * grid.shape[1] // 10
-        self.pos = np.zeros((self.n_particles, 2), dtype=int)
+        self.device = T.device('cuda' if T.cuda.is_available() else 'cpu')
+        print("using", self.device)
 
-        self.actions = np.array([[0, 1], [-1, 0], [0, -1], [1, 0]])
+        self.grid = grid
+        self.grid_array = T.tensor(grid.grid_array).to(self.device)
+        self.empty_rows, self.empty_cols = self.get_empty_coords()
+
+        self.n_particles = n_particles if n_particles is not None else np.prod(
+            grid.shape) // 10
+        self.pos = T.zeros((self.n_particles, 2), dtype=int).to(self.device)
+
+        self.actions = T.tensor(
+            [[0, 1], [-1, 0], [0, -1], [1, 0]]).to(self.device)
         self.n_actions = len(self.actions)
+
+    def get_empty_coords(self) -> Tuple[T.Tensor, T.Tensor]:
+        """return coordinates of empty positions"""
+        empty_rows, empty_cols = T.where(self.grid_array == EMPTY)
+        empty_rows, empty_cols = empty_rows.to(
+            self.device), empty_cols.to(self.device)
+        return empty_rows, empty_cols
 
     def step(self):
         a = np.random.choice(self.n_actions, size=self.n_particles)
         pos_new = self.pos + self.actions[a]
-        pos_vals = self.grid.grid_array[pos_new[:, 0], pos_new[:, 1]]
-        wall_clsns = np.where(pos_vals == WALL)[0]
+        pos_vals = self.grid_array[pos_new[:, 0], pos_new[:, 1]]
+        wall_clsns = T.where(pos_vals == WALL)[0]
         pos_new[wall_clsns] = self.pos[wall_clsns]
         self.pos = pos_new
 
     def get_grid_gs(self) -> np.array:
-        grid = self.grid.grid_array.copy()
+        grid = self.grid_array.clone()
         grid[self.pos[:, 0], self.pos[:, 1]] = C_PARTICLE
         grid[grid == WALL] = C_WALL
         return grid
 
     def render(self, time=25):
-        grid = self.get_grid_gs()
+        grid = self.get_grid_gs().cpu().numpy()
         cv2.imshow("BROWNIAN MOTION SIMULATOR", grid)
         if cv2.waitKey(time) & 0xFF == ord('q'):
             return False
@@ -57,8 +72,8 @@ class Brownian:
             indices[:] = indices[0]
 
         # assign agents positions
-        self.pos = np.array(
-            (self.empty_rows[indices], self.empty_cols[indices])).T
+        self.pos = T.stack(
+            (self.empty_rows[indices], self.empty_cols[indices])).T.to(self.device)
         return self.pos
 
 
@@ -78,5 +93,6 @@ if __name__ == '__main__':
     grid = Grid(args.grid_path, None, args.grid_shape)
     brownian = Brownian(grid, n_particles=args.n_particles)
     brownian.reset(same_point=args.same_point)
-    while(brownian.render()):
+
+    while brownian.render():
         brownian.step()
