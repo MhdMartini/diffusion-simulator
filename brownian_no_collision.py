@@ -9,9 +9,9 @@ search map object contains a 2d array of cell objects
 EMPTY = 0
 WALL = 255
 AGENT = 2
-C_PARTICLE = tuple(np.random.choice(255, size=(3,)))
-C_WALL = (0, 0, 0)
-C_EMPTY = (249, 246, 241)
+C_PARTICLE = 255
+C_WALL = 200
+C_EMPTY = 0
 
 
 class Brownian:
@@ -36,22 +36,12 @@ class Brownian:
 
     def get_grid_gs(self) -> np.array:
         grid = self.grid.grid_array.copy()
-        grid[self.pos[:, 0], self.pos[:, 1]] = 255
-        grid[grid == WALL] = 200
+        grid[self.pos[:, 0], self.pos[:, 1]] = C_PARTICLE
+        grid[grid == WALL] = C_WALL
         return grid
-
-    def get_grid_3d(self) -> np.array:
-        grid = self.grid.grid_array.copy()
-        grid[self.pos[:, 0], self.pos[:, 1]] = AGENT
-        grid3d = cv2.merge((grid, grid, grid))
-        grid3d[grid == AGENT, :] = C_PARTICLE
-        grid3d[grid == WALL, :] = C_WALL
-        grid3d[grid == EMPTY, :] = C_EMPTY
-        return grid3d
 
     def render(self, time=25):
         grid = self.get_grid_gs()
-        # grid = self.get_grid_3d()
         cv2.imshow("BROWNIAN MOTION SIMULATOR", grid)
         if cv2.waitKey(time) & 0xFF == ord('q'):
             return False
@@ -73,8 +63,20 @@ class Brownian:
 
 
 if __name__ == '__main__':
-    grid = Grid(shape=(1080, 1920))
-    brownian = Brownian(grid, n_particles=500000)
-    brownian.reset(same_point=False)
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--grid_shape', nargs="+",
+                        type=int, default=(1080, 1920), help="height and width of the grid")
+    parser.add_argument('--grid_path', type=str, default=None,
+                        help="path to grid npy or image file - walls should be bright")
+    parser.add_argument('--n_particles', type=int,
+                        default=100_000, help="number of particles")
+    parser.add_argument('--same_point', type=int, default=0,
+                        help="0: particles start from random positions\n1: particles start from the same point")
+    args = parser.parse_args()
+
+    grid = Grid(args.grid_path, None, args.grid_shape)
+    brownian = Brownian(grid, n_particles=args.n_particles)
+    brownian.reset(same_point=args.same_point)
     while(brownian.render()):
         brownian.step()
