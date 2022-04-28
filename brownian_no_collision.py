@@ -15,11 +15,10 @@ AGENT = 2
 C_PARTICLE = 255
 C_WALL = 200
 C_EMPTY = 0
-FPS = 60
 
 
 class Brownian:
-    def __init__(self, grid: Grid, n_particles: int = None, out_path: str = None):
+    def __init__(self, grid: Grid, n_particles: int = None, out_path: str = None, fps: int = None):
         self.device = T.device('cuda' if T.cuda.is_available() else 'cpu')
         print("using", self.device)
 
@@ -38,7 +37,7 @@ class Brownian:
         self.out = None
         if out_path is not None:
             self.out = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(
-                'M', 'J', 'P', 'G'), FPS, (grid.shape[1], grid.shape[0]), 3)
+                'M', 'J', 'P', 'G'), fps, (grid.shape[1], grid.shape[0]), 3)
 
     def get_empty_coords(self) -> Tuple[T.Tensor, T.Tensor]:
         """return coordinates of empty positions"""
@@ -122,7 +121,7 @@ if __name__ == '__main__':
 
     grid = Grid(args.grid_path, None, args.grid_shape)
     brownian = Brownian(grid, n_particles=args.n_particles,
-                        out_path=args.out_path)
+                        out_path=args.out_path, fps=args.fps)
     brownian.reset(same_point=args.same_point)
 
     if args.out_path is not None:
