@@ -3,7 +3,7 @@ import numpy as np
 import cv2
 from grid import Grid
 import torch as T
-from itertools import count
+from tqdm import tqdm
 """
 class to define the class for the seach map
 search map object contains a 2d array of cell objects
@@ -15,10 +15,11 @@ AGENT = 2
 C_PARTICLE = 255
 C_WALL = 200
 C_EMPTY = 0
+FPS = 60
 
 
 class Brownian:
-    def __init__(self, grid: Grid, n_particles: int = None):
+    def __init__(self, grid: Grid, n_particles: int = None, out_path: str = None):
         self.device = T.device('cuda' if T.cuda.is_available() else 'cpu')
         print("using", self.device)
 
@@ -33,6 +34,11 @@ class Brownian:
         self.actions = T.tensor(
             [[0, 1], [-1, 0], [0, -1], [1, 0]]).to(self.device)
         self.n_actions = len(self.actions)
+
+        self.out = None
+        if out_path is not None:
+            self.out = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(
+                'M', 'J', 'P', 'G'), FPS, (grid.shape[1], grid.shape[0]), 3)
 
     def get_empty_coords(self) -> Tuple[T.Tensor, T.Tensor]:
         """return coordinates of empty positions"""
@@ -62,6 +68,11 @@ class Brownian:
             return False
         return True
 
+    def save(self):
+        grid = self.get_grid_gs().cpu().numpy()
+        grid = cv2.cvtColor(grid, cv2.COLOR_GRAY2BGR)
+        self.out.write(grid)
+
     def reset(self, same_point=False) -> np.array:
         """get random initial positions for ants"""
         # get random valid indices
@@ -76,6 +87,19 @@ class Brownian:
             (self.empty_rows[indices], self.empty_cols[indices])).T.to(self.device)
         return self.pos
 
+    def __del__(self):
+        if self.out is not None:
+            self.out.release()
+            cv2.destroyAllWindows()
+
+
+def save_video(env, args):
+    print(f"saving {args.out_path}...")
+    n_frames = int(args.vid_len * args.fps)
+    for _ in tqdm(range(n_frames)):
+        env.save()
+        env.step()
+
 
 if __name__ == '__main__':
     import argparse
@@ -88,11 +112,23 @@ if __name__ == '__main__':
                         default=100_000, help="number of particles")
     parser.add_argument('--same_point', type=int, default=0,
                         help="0: particles start from random positions\n1: particles start from the same point")
+    parser.add_argument('--out_path', type=str, default=None,
+                        help="if a path is provided, video will be saved to this path")
+    parser.add_argument('--vid_len', type=int, default=None,
+                        help="length of output video in seconds")
+    parser.add_argument('--fps', type=int, default=60,
+                        help="frames per second of output video")
     args = parser.parse_args()
 
     grid = Grid(args.grid_path, None, args.grid_shape)
-    brownian = Brownian(grid, n_particles=args.n_particles)
+    brownian = Brownian(grid, n_particles=args.n_particles,
+                        out_path=args.out_path)
     brownian.reset(same_point=args.same_point)
 
-    while brownian.render():
-        brownian.step()
+    if args.out_path is not None:
+        # save video
+        save_video(brownian, args)
+    else:
+        # render
+        while brownian.render():
+            brownian.step()
