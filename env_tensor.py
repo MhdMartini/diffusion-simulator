@@ -20,7 +20,8 @@ C_EMPTY = 0
 
 class Brownian:
     def __init__(self, grid: Grid, n_particles: int = None, out_path: str = None, fps: int = None):
-        self.device = T.device('cuda' if T.cuda.is_available() else 'cpu')
+        # T.device('cuda' if T.cuda.is_available() else 'cpu')
+        self.device = "cpu"
         print("using", self.device)
 
         self.grid = grid
@@ -83,7 +84,7 @@ class Brownian:
         """get random initial positions for ants"""
         # get random valid indices
         indices = np.random.choice(
-            len(self.empty_rows), size=self.n_particles, replace=False)
+            len(self.empty_rows), size=self.n_particles, replace=True)
 
         if same_point:
             indices[:] = indices[0]
