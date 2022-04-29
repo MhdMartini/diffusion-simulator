@@ -4,6 +4,7 @@ import cv2
 from grid import Grid
 import torch as T
 from tqdm import tqdm
+from time import time
 """
 class to define the class for the seach map
 search map object contains a 2d array of cell objects
@@ -39,6 +40,8 @@ class Brownian:
             self.out = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(
                 'M', 'J', 'P', 'G'), fps, (grid.shape[1], grid.shape[0]), 3)
 
+        self.time = 0
+
     def get_empty_coords(self) -> Tuple[T.Tensor, T.Tensor]:
         """return coordinates of empty positions"""
         empty_rows, empty_cols = T.where(self.grid_array == EMPTY)
@@ -60,10 +63,14 @@ class Brownian:
         grid[grid == WALL] = C_WALL
         return grid
 
-    def render(self, time=25):
+    def render(self):
+        fps = int(1 / (time() - self.time))
+        self.time = time()
         grid = self.get_grid_gs().cpu().numpy()
+        grid = cv2.putText(grid, f'{fps}', (grid.shape[1] - 120, 80), cv2.FONT_HERSHEY_SIMPLEX,
+                           2, (255, 0, 0), 3, cv2.LINE_AA)
         cv2.imshow("BROWNIAN MOTION SIMULATOR", grid)
-        if cv2.waitKey(time) & 0xFF == ord('q'):
+        if cv2.waitKey(25) & 0xFF == ord('q'):
             return False
         return True
 
