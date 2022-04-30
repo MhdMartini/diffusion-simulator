@@ -3,7 +3,7 @@ import numpy as np
 import cv2
 from grid import Grid
 from tqdm import tqdm
-from time import time
+from time import perf_counter
 """
 class to define the class for the seach map
 search map object contains a 2d array of cell objects
@@ -23,8 +23,7 @@ class Brownian:
         self.grid_array = grid.grid_array
         self.empty_rows, self.empty_cols = self.get_empty_coords()
 
-        self.n_particles = n_particles if n_particles is not None else np.prod(
-            grid.shape) // 10
+        self.n_particles = n_particles
         self.pos = np.zeros((self.n_particles, 2), dtype=int)
 
         self.actions = np.array(
@@ -58,27 +57,47 @@ class Brownian:
         return grid
 
     def get_fps(self):
-        fps = int(1 / (time() - self.time))
-        self.time = time()
+        fps = int(1 / (perf_counter() - self.time))
+        self.time = perf_counter()
         return fps
 
     def render(self):
-        fps = self.get_fps()
         grid = self.get_grid_gs()
-        grid = cv2.putText(grid, f'{fps}', (grid.shape[1] - 120, 80), cv2.FONT_HERSHEY_SIMPLEX,
-                           2, (255, 0, 0), 3, cv2.LINE_AA)
+        grid = self.draw_fps(grid)
         cv2.imshow("BROWNIAN MOTION SIMULATOR", grid)
         if cv2.waitKey(25) & 0xFF == ord('q'):
             return False
         return True
 
+    def draw_fps(self, frame: np.array):
+        fps = self.get_fps()
+        frame = cv2.putText(frame, f'{fps}', (frame.shape[1] - 120, 80), cv2.FONT_HERSHEY_SIMPLEX,
+                            2, (255, 0, 0), 3, cv2.LINE_AA)
+        return frame
+
     def save(self):
         grid = self.get_grid_gs()
-        fps = self.get_fps()
-        grid = cv2.putText(grid, f'{fps}', (grid.shape[1] - 120, 80), cv2.FONT_HERSHEY_SIMPLEX,
-                           2, (255, 0, 0), 3, cv2.LINE_AA)
+        grid = self.draw_fps(grid)
         grid = cv2.cvtColor(grid, cv2.COLOR_GRAY2BGR)
         self.out.write(grid)
+
+    def get_zoom_coords(self, h: int, w: int, h_perc: float, w_perc: float) -> Tuple[int, int, int, int]:
+        """get coordinates of zoomed frame"""
+        h_sub = int(h * h_perc / 2)
+        w_sub = int(w * w_perc / 2)
+        center_h, center_w = (h // 2, w // 2)
+        return center_h - h_sub, center_h + h_sub, center_w - w_sub, center_w + w_sub
+
+    def save_zoomed(self, h_perc: float, w_perc: float):
+        frame = self.get_grid_gs().cpu().numpy()
+        h, w = frame.shape
+        r_min, r_max, c_min, c_max = self.get_zoom_coords(
+            h, w, h_perc, w_perc)
+        frame_sub = frame[r_min: r_max, c_min: c_max]
+        frame_zoomed = cv2.resize(
+            frame_sub, (w, h), interpolation=cv2.INTER_NEAREST)
+        frame_zoomed = cv2.cvtColor(frame_zoomed, cv2.COLOR_GRAY2BGR)
+        self.out.write(frame_zoomed)
 
     def reset(self, same_point=False) -> np.array:
         """get random initial positions for ants"""
@@ -116,7 +135,7 @@ if __name__ == '__main__':
     parser.add_argument('--grid_path', type=str, default=None,
                         help="path to grid npy or image file - walls should be bright")
     parser.add_argument('--n_particles', type=int,
-                        default=100_000, help="number of particles")
+                        default=1000_000, help="number of particles")
     parser.add_argument('--same_point', type=int, default=0,
                         help="0: particles start from random positions\n1: particles start from the same point")
     parser.add_argument('--out_path', type=str, default=None,
