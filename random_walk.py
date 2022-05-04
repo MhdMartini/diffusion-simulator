@@ -26,9 +26,27 @@ class EnvVis:
     def __init__(self):
         self.colors = None
 
-    def get_grid_gs(self) -> np.array:
-        grid = self.grid_array.clone()
-        grid[self.pos[:, 0], self.pos[:, 1]] = C_PARTICLE
+        # define lambdas
+        self.get_grid_array_copy = [
+            lambda: self.grid_array.copy(),
+            lambda: self.grid_array.clone(),
+            lambda: self.grid_array.clone()
+        ]
+        self.get_grid_gs = [
+            lambda: self._get_grid_gs(),
+            lambda: self._get_grid_gs().cpu().numpy(),
+            lambda: self._get_grid_gs().cpu().numpy(),
+        ]
+        self.get_pos_np = [
+            lambda: self.pos,
+            lambda: self.pos.cpu().numpy(),
+            lambda: self.pos.cpu().numpy(),
+        ]
+
+    def _get_grid_gs(self) -> np.array:
+        grid = self.get_grid_array_copy[self.device_idx]()
+        pos = self.get_pos[self.device_idx]()
+        grid[pos[:, 0], pos[:, 1]] = C_PARTICLE
         grid[grid == WALL] = C_WALL
         return grid
 
@@ -51,12 +69,12 @@ class EnvVis:
         return frame
 
     def color_particles(self, frame: np.array) -> np.array:
-        pos = self.pos.cpu().numpy()
+        pos = self.get_pos_np[self.device_idx]()
         frame[pos[:, 0], pos[:, 1]] = self.colors
         return frame
 
     def get_gbr_frame(self):
-        frame = self.get_grid_gs().cpu().numpy()
+        frame = self.get_grid_gs[self.device_idx]()
         frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
         frame = self.color_particles(frame)
         frame = self.draw_fps(frame)
@@ -65,7 +83,7 @@ class EnvVis:
     def get_bg(self):
         """return half blue half red"""
         c = np.zeros((self.n_particles, 3))
-        pos = self.pos.cpu().numpy()
+        pos = self.get_pos_np[self.device_idx]()
         c[np.where(pos[:, 1] < self.grid.shape[1] // 2)] = RED_BGR
         c[np.where(pos[:, 1] >= self.grid.shape[1] // 2)] = BLUE_BGR
         return c
@@ -96,20 +114,49 @@ class EnvVis:
 
 
 class RandomWalk(EnvVis):
-    def __init__(self, grid: Grid, n_particles: int = None, out_path: str = None, fps: int = None, device: str = "cuda"):
-        super(RandomWalk, self).__init__()
-        self.device = device
+    def __init__(self, grid: Grid, n_particles: int = None, out_path: str = None, fps: int = None, device_idx: int = 1):
+        self.devices_names = ["numpy", "Tensor (CPU)", "Tensor (GPU)"]
+        self.devices = ["numpy", "cpu", "cuda"]
+        self.libs = [np, T, T]
+        self.device_idx = device_idx
+        self.device = self.devices[device_idx]
         print("using", self.device)
+        super(RandomWalk, self).__init__()
 
         self.grid = grid
-        self.grid_array = T.tensor(grid.grid_array).to(self.device)
-        self.empty_rows, self.empty_cols = self.get_empty_coords()
+
+        # define lambdas
+        self.get_grid_array = [
+            lambda grid_array: grid_array,
+            lambda grid_array: T.tensor(grid_array).to(self.device),
+            lambda grid_array: T.tensor(grid_array).to(self.device),
+        ]
+        self.get_empty_coords = [
+            lambda: self.get_empty_coords_np(),
+            lambda: self.get_empty_coords_torch(),
+            lambda: self.get_empty_coords_torch(),
+        ]
+        self.get_pos = [
+            lambda: np.zeros((self.n_particles, 2), dtype=int),
+            lambda: T.zeros((self.n_particles, 2), dtype=int).to(self.device),
+            lambda: T.zeros((self.n_particles, 2), dtype=int).to(self.device),
+        ]
+        self.get_actions = [
+            lambda: np.array([[0, 1], [0, -1], [1, 0], [-1, 0]]),
+            lambda: T.tensor(
+                [[0, 1], [0, -1], [1, 0], [-1, 0]]).to(self.device),
+            lambda: T.tensor(
+                [[0, 1], [0, -1], [1, 0], [-1, 0]]).to(self.device),
+        ]
+
+        self.grid_array = self.get_grid_array[self.device_idx](grid.grid_array)
+        self.empty_rows, self.empty_cols = self.get_empty_coords[self.device_idx](
+        )
 
         self.n_particles = n_particles
-        self.pos = T.zeros((self.n_particles, 2), dtype=int).to(self.device)
+        self.pos = self.get_pos[self.device_idx]()
 
-        self.actions = T.tensor(
-            [[0, 1], [-1, 0], [0, -1], [1, 0]]).to(self.device)
+        self.actions = self.get_actions[self.device_idx]()
         self.n_actions = len(self.actions)
 
         self.out = None
@@ -118,35 +165,49 @@ class RandomWalk(EnvVis):
                 'M', 'J', 'P', 'G'), fps, (grid.shape[1], grid.shape[0]), 3)
         self.time = 0
 
-    def get_empty_coords(self) -> Tuple[T.Tensor, T.Tensor]:
+    def get_empty_coords_torch(self) -> Tuple[T.Tensor, T.Tensor]:
         """return coordinates of empty positions"""
         empty_rows, empty_cols = T.where(self.grid_array == EMPTY)
         empty_rows, empty_cols = empty_rows.to(
             self.device), empty_cols.to(self.device)
         return empty_rows, empty_cols
 
+    def get_empty_coords_np(self) -> Tuple[np.array, np.array]:
+        """return coordinates of empty positions"""
+        empty_rows, empty_cols = np.where(self.grid_array == EMPTY)
+        return empty_rows, empty_cols
+
     def step(self):
         a = np.random.choice(self.n_actions, size=self.n_particles)
         pos_new = self.pos + self.actions[a]
         pos_vals = self.grid_array[pos_new[:, 0], pos_new[:, 1]]
-        wall_clsns = T.where(pos_vals == WALL)[0]
+        wall_clsns = self.libs[self.device_idx].where(pos_vals == WALL)[0]
         pos_new[wall_clsns] = self.pos[wall_clsns]
         self.pos = pos_new
 
     def reset(self, same_point=False) -> np.array:
         """get random initial positions for ants"""
         # get random valid indices
+        device_array = [np.array, T.tensor, T.tensor]
+        get_pos_init = [
+            lambda indices: np.stack(
+                (self.empty_rows[indices], self.empty_cols[indices])).T,
+            lambda indices: T.stack(
+                (self.empty_rows[indices], self.empty_cols[indices])).T.to(self.device),
+            lambda indices: T.stack(
+                (self.empty_rows[indices], self.empty_cols[indices])).T.to(self.device),
+        ]
+
         if same_point:
-            self.pos[:] = T.tensor(
-                (self.grid_array.shape[0] // 2, self.grid_array.shape[1] // 2))
+            self.pos[:] = device_array[self.device_idx](
+                (self.grid.shape[0] // 2, self.grid.shape[1] // 2))
             return self.pos
 
         indices = np.random.choice(
             len(self.empty_rows), size=self.n_particles, replace=True)
 
         # assign agents positions
-        self.pos = T.stack(
-            (self.empty_rows[indices], self.empty_cols[indices])).T.to(self.device)
+        self.pos = get_pos_init[self.device_idx](indices)
 
         EnvVis.reset(self)
         return self.pos
@@ -182,13 +243,13 @@ if __name__ == '__main__':
                         help="length of output video in seconds")
     parser.add_argument('--fps', type=int, default=60,
                         help="frames per second of output video")
-    parser.add_argument('--gpu', type=int, default=1,
-                        help="1: use cuda, 0: use cpu")
+    parser.add_argument('--device', type=int, default=1,
+                        help="0: numpy, 1: torch cpu, 2: torch gpu")
     args = parser.parse_args()
 
     grid = Grid(args.grid_path, None, args.grid_shape)
     env = RandomWalk(grid, n_particles=args.n_particles,
-                     out_path=args.out_path, fps=args.fps, device="cuda" if args.gpu else "cpu")
+                     out_path=args.out_path, fps=args.fps, device_idx=args.device)
     env.reset(same_point=args.same_point)
 
     if args.out_path is not None:
