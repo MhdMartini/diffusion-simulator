@@ -64,7 +64,13 @@ class EnvVis:
 
     def draw_fps(self, frame: np.array):
         fps = self.get_fps()
-        frame = cv2.putText(frame, f'{fps}', (frame.shape[1] - 120, 80), cv2.FONT_HERSHEY_SIMPLEX,
+        frame = cv2.putText(frame, f'{fps}', (40, 80), cv2.FONT_HERSHEY_SIMPLEX,
+                            2, (255, 255, 255), 3, cv2.LINE_AA)
+        return frame
+
+    def draw_device(self, frame: np.array) -> np.array:
+        """draw device on frame"""
+        frame = cv2.putText(frame, self.devices[self.device_idx], (40, 160), cv2.FONT_HERSHEY_SIMPLEX,
                             2, (255, 255, 255), 3, cv2.LINE_AA)
         return frame
 
@@ -78,6 +84,7 @@ class EnvVis:
         frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
         frame = self.color_particles(frame)
         frame = self.draw_fps(frame)
+        frame = self.draw_device(frame)
         return frame
 
     def get_bg(self):
@@ -185,7 +192,7 @@ class RandomWalk(EnvVis):
         pos_new[wall_clsns] = self.pos[wall_clsns]
         self.pos = pos_new
 
-    def reset(self, same_point=False) -> np.array:
+    def reset(self) -> np.array:
         """get random initial positions for ants"""
         # get random valid indices
         device_array = [np.array, T.tensor, T.tensor]
@@ -197,11 +204,6 @@ class RandomWalk(EnvVis):
             lambda indices: T.stack(
                 (self.empty_rows[indices], self.empty_cols[indices])).T.to(self.device),
         ]
-
-        if same_point:
-            self.pos[:] = device_array[self.device_idx](
-                (self.grid.shape[0] // 2, self.grid.shape[1] // 2))
-            return self.pos
 
         indices = np.random.choice(
             len(self.empty_rows), size=self.n_particles, replace=True)
@@ -235,8 +237,6 @@ if __name__ == '__main__':
                         help="path to grid npy or image file - walls should be bright")
     parser.add_argument('--n_particles', type=int,
                         default=1000_000, help="number of particles")
-    parser.add_argument('--same_point', type=int, default=0,
-                        help="0: particles start from random positions\n1: particles start from the same point")
     parser.add_argument('--out_path', type=str, default=None,
                         help="if a path is provided, video will be saved to this path")
     parser.add_argument('--vid_len', type=int, default=None,
@@ -250,7 +250,7 @@ if __name__ == '__main__':
     grid = Grid(args.grid_path, None, args.grid_shape)
     env = RandomWalk(grid, n_particles=args.n_particles,
                      out_path=args.out_path, fps=args.fps, device_idx=args.device)
-    env.reset(same_point=args.same_point)
+    env.reset()
 
     if args.out_path is not None:
         # save video
