@@ -1,7 +1,7 @@
 import numpy as np
-from random_walk import RandomWalk
+from envs.random_walk import RandomWalk
 from tqdm import tqdm
-from grid import Grid
+from utils.grid import Grid
 
 
 def save_video(env, args):
