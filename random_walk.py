@@ -5,10 +5,6 @@ from grid import Grid
 from tqdm import tqdm
 from time import perf_counter
 import torch as T
-"""
-class to define the class for the seach map
-search map object contains a 2d array of cell objects
-"""
 
 EMPTY = 0
 WALL = 255
@@ -16,8 +12,8 @@ AGENT = 2
 C_PARTICLE = 255
 C_WALL = 200
 C_EMPTY = 0
-BLUE_BGR = (0, 0, 255)
-RED_BGR = (255, 0, 0)
+RED_BGR = (255, 204, 0)
+BLUE_BGR = (102, 133, 255)
 
 
 class EnvVis:
@@ -70,7 +66,7 @@ class EnvVis:
 
     def draw_device(self, frame: np.array) -> np.array:
         """draw device on frame"""
-        frame = cv2.putText(frame, self.devices[self.device_idx], (40, 160), cv2.FONT_HERSHEY_SIMPLEX,
+        frame = cv2.putText(frame, self.devices_names[self.device_idx], (40, 160), cv2.FONT_HERSHEY_SIMPLEX,
                             2, (255, 255, 255), 3, cv2.LINE_AA)
         return frame
 
@@ -122,7 +118,10 @@ class EnvVis:
 
 class RandomWalk(EnvVis):
     def __init__(self, grid: Grid, n_particles: int = None, out_path: str = None, fps: int = None, device_idx: int = 1):
-        self.devices_names = ["numpy", "Tensor (CPU)", "Tensor (GPU)"]
+        self.devices_names = [
+            "Numpy - Intel(R) Core(TM) i5-9400 CPU @ 2.90GHz",
+            "Tensor CPU - Intel(R) Core(TM) i5-9400 CPU @ 2.90GHz",
+            "Tensor GPU - GeForce GTX 1660 Ti"]
         self.devices = ["numpy", "cpu", "cuda"]
         self.libs = [np, T, T]
         self.device_idx = device_idx
@@ -169,7 +168,7 @@ class RandomWalk(EnvVis):
         self.out = None
         if out_path is not None:
             self.out = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(
-                'M', 'J', 'P', 'G'), fps, (grid.shape[1], grid.shape[0]), 3)
+                *'mp4v'), fps, (grid.shape[1], grid.shape[0]), 3)
         self.time = 0
 
     def get_empty_coords_torch(self) -> Tuple[T.Tensor, T.Tensor]:
@@ -195,7 +194,6 @@ class RandomWalk(EnvVis):
     def reset(self) -> np.array:
         """get random initial positions for ants"""
         # get random valid indices
-        device_array = [np.array, T.tensor, T.tensor]
         get_pos_init = [
             lambda indices: np.stack(
                 (self.empty_rows[indices], self.empty_cols[indices])).T,
@@ -236,14 +234,14 @@ if __name__ == '__main__':
     parser.add_argument('--grid_path', type=str, default=None,
                         help="path to grid npy or image file - walls should be bright")
     parser.add_argument('--n_particles', type=int,
-                        default=1000_000, help="number of particles")
+                        default=1_000_000, help="number of particles")
     parser.add_argument('--out_path', type=str, default=None,
                         help="if a path is provided, video will be saved to this path")
     parser.add_argument('--vid_len', type=int, default=None,
                         help="length of output video in seconds")
     parser.add_argument('--fps', type=int, default=60,
                         help="frames per second of output video")
-    parser.add_argument('--device', type=int, default=1,
+    parser.add_argument('--device', type=int, default=0,
                         help="0: numpy, 1: torch cpu, 2: torch gpu")
     args = parser.parse_args()
 

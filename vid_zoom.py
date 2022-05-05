@@ -1,5 +1,5 @@
 import numpy as np
-from env_tensor import Brownian
+from random_walk import RandomWalk
 from tqdm import tqdm
 from grid import Grid
 
@@ -30,8 +30,6 @@ if __name__ == '__main__':
                         help="path to grid npy or image file - walls should be bright")
     parser.add_argument('--n_particles', type=int,
                         default=1000_000, help="number of particles")
-    parser.add_argument('--same_point', type=int, default=0,
-                        help="0: particles start from random positions\n1: particles start from the same point")
     parser.add_argument('--out_path', type=str, default=None,
                         help="if a path is provided, video will be saved to this path")
     parser.add_argument('--vid_len', type=int, default=None,
@@ -40,17 +38,19 @@ if __name__ == '__main__':
                         help="frames per second of output video")
     parser.add_argument('--max_zoom', type=float, default=0.1,
                         help="max zoom -> min ratio of original image")
+    parser.add_argument('--device', type=int, default=0,
+                        help="0: numpy, 1: torch cpu, 2: torch gpu")
     args = parser.parse_args()
 
     grid = Grid(args.grid_path, None, args.grid_shape)
-    brownian = Brownian(grid, n_particles=args.n_particles,
-                        out_path=args.out_path, fps=args.fps)
-    brownian.reset(same_point=args.same_point)
+    RandomWalk = RandomWalk(grid, n_particles=args.n_particles,
+                            out_path=args.out_path, fps=args.fps, device_idx=args.device)
+    RandomWalk.reset()
 
     if args.out_path is not None:
         # save video
-        save_video(brownian, args)
+        save_video(RandomWalk, args)
     else:
         # render
-        while brownian.render():
-            brownian.step()
+        while RandomWalk.render():
+            RandomWalk.step()
